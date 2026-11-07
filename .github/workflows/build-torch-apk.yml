@@ -81,7 +81,7 @@ jobs:
               defaultConfig {
                   applicationId = "com.kastinetech.torch"
                   minSdk = 23
-                  targetSdk = 28
+                  targetSdk = 35
                   versionCode = 1
                   versionName = "1.0"
               }
@@ -143,6 +143,7 @@ jobs:
 
           import android.Manifest
           import android.app.Activity
+          import android.app.AlertDialog
           import android.content.Context
           import android.content.pm.PackageManager
           import android.hardware.camera2.CameraAccessException
@@ -157,8 +158,10 @@ jobs:
           import android.os.VibratorManager
           import android.view.Gravity
           import android.view.View
+          import android.view.WindowInsets
           import android.widget.Button
           import android.widget.LinearLayout
+          import android.widget.ScrollView
           import android.widget.TextView
           import android.widget.Toast
           import android.graphics.Color
@@ -186,8 +189,8 @@ jobs:
 
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  window.statusBarColor = Color.rgb(16, 17, 22)
-                  window.navigationBarColor = Color.rgb(16, 17, 22)
+                  window.statusBarColor = Color.TRANSPARENT
+                  window.navigationBarColor = Color.TRANSPARENT
                   cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
                   cameraId = try {
                       cameraManager.cameraIdList.firstOrNull { id ->
@@ -239,6 +242,7 @@ jobs:
 
                   powerButton = Button(this).apply {
                       text = "⏻"
+                      contentDescription = "Turn flashlight on"
                       textSize = 54f
                       typeface = Typeface.DEFAULT
                       isAllCaps = false
@@ -256,6 +260,7 @@ jobs:
                   root.addView(powerButton, powerParams)
 
                   statusText = TextView(this).apply {
+                      accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
                       textSize = 15f
                       setTextColor(Color.rgb(170, 174, 188))
                       gravity = Gravity.CENTER
@@ -285,7 +290,23 @@ jobs:
                       setPadding(dp(8), dp(24), dp(8), 0)
                   }
                   root.addView(note, matchWrap())
-                  setContentView(root)
+                  if (Build.VERSION.SDK_INT >= 35) {
+                      root.setOnApplyWindowInsetsListener { view, insets ->
+                          val bars = insets.getInsets(WindowInsets.Type.systemBars())
+                          view.setPadding(
+                              dp(24) + bars.left,
+                              dp(24) + bars.top,
+                              dp(24) + bars.right,
+                              dp(24) + bars.bottom
+                          )
+                          insets
+                      }
+                  }
+                  val scroll = ScrollView(this).apply {
+                      isFillViewport = true
+                      addView(root)
+                  }
+                  setContentView(scroll)
               }
 
               private fun makeButton(label: String, action: () -> Unit): Button =
@@ -307,33 +328,65 @@ jobs:
               private fun matchWrap() = LinearLayout.LayoutParams(-1, -2)
               private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-              private fun setTorch(enabled: Boolean) {
+              private fun setTorch(enabled: Boolean): Boolean {
                   val id = cameraId
                   if (id == null) {
-                      Toast.makeText(this, "No compatible flashlight found on this device.", Toast.LENGTH_LONG).show()
-                      return
+                      torchOn = false
+                      updateUi()
+                      if (enabled) Toast.makeText(this, "No compatible flashlight found on this device.", Toast.LENGTH_LONG).show()
+                      return false
                   }
-                  if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                  if (enabled && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                       stopSpecialModes()
                       requestPermissions(arrayOf(Manifest.permission.CAMERA), 1001)
                       Toast.makeText(this, "Allow camera permission, then tap the torch button again.", Toast.LENGTH_LONG).show()
-                      return
+                      updateUi()
+                      return false
                   }
-                  try {
+                  return try {
                       cameraManager.setTorchMode(id, enabled)
                       torchOn = enabled
                       updateUi()
+                      true
                   } catch (_: CameraAccessException) {
+                      torchOn = false
+                      updateUi()
                       Toast.makeText(this, "Flashlight is unavailable. Close other camera apps and try again.", Toast.LENGTH_LONG).show()
+                      false
                   } catch (_: SecurityException) {
+                      torchOn = false
+                      updateUi()
                       Toast.makeText(this, "Android did not allow flashlight access.", Toast.LENGTH_LONG).show()
+                      false
                   } catch (_: Exception) {
+                      torchOn = false
+                      updateUi()
                       Toast.makeText(this, "Couldn't change flashlight state on this device.", Toast.LENGTH_LONG).show()
+                      false
+                  }
+              }
+
+              override fun onRequestPermissionsResult(
+                  requestCode: Int,
+                  permissions: Array<out String>,
+                  grantResults: IntArray
+              ) {
+                  super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+                  if (requestCode == 1001) {
+                      val granted = grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+                      Toast.makeText(
+                          this,
+                          if (granted) "Permission granted. Tap the flashlight button to turn it on."
+                          else "Camera permission is needed for the phone's LED.",
+                          Toast.LENGTH_LONG
+                      ).show()
+                      updateUi()
                   }
               }
 
               private fun updateUi() {
-                  powerButton?.text = if (torchOn) "⏻" else "⏻"
+                  powerButton?.text = "⏻"
+                  powerButton?.contentDescription = if (torchOn) "Turn flashlight off" else "Turn flashlight on"
                   powerButton?.background = rounded(
                       if (torchOn) Color.WHITE else Color.rgb(255, 200, 87), 1000
                   )
@@ -362,7 +415,11 @@ jobs:
                   if (!sosOn) return
                   val onDuration = sosPattern[sosIndex % sosPattern.size]
                   pulseState = !pulseState
-                  setTorch(pulseState)
+                  if (!setTorch(pulseState)) {
+                      stopSpecialModes()
+                      updateUi()
+                      return
+                  }
                   sosRunnable = Runnable {
                       if (sosOn) {
                           sosIndex++
@@ -378,6 +435,15 @@ jobs:
                       setTorch(false)
                       return
                   }
+                  AlertDialog.Builder(this)
+                      .setTitle("Flashing light warning")
+                      .setMessage("Strobe mode flashes repeatedly and may cause discomfort or trigger seizures in people with photosensitivity. Continue only if it is safe.")
+                      .setNegativeButton("Cancel", null)
+                      .setPositiveButton("Continue") { _, _ -> startStrobe() }
+                      .show()
+              }
+
+              private fun startStrobe() {
                   stopSpecialModes()
                   strobeOn = true
                   pulseState = false
@@ -385,7 +451,11 @@ jobs:
                       override fun run() {
                           if (!strobeOn) return
                           pulseState = !pulseState
-                          setTorch(pulseState)
+                          if (!setTorch(pulseState)) {
+                              stopSpecialModes()
+                              updateUi()
+                              return
+                          }
                           handler.postDelayed(this, 250)
                       }
                   }
