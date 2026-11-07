@@ -395,12 +395,13 @@ jobs:
                   powerButton?.background = rounded(
                       if (torchOn) Color.WHITE else Color.rgb(255, 200, 87), 1000
                   )
-                  statusText?.text = when {
+                  val status = when {
                       sosOn -> "SOS MODE ACTIVE"
                       strobeOn -> "STROBE MODE ACTIVE"
                       torchOn -> "FLASHLIGHT ON"
                       else -> "FLASHLIGHT OFF"
                   }
+                  if (statusText?.text != status) statusText?.text = status
               }
 
               private fun toggleSos() {
