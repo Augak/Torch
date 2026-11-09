@@ -1,34 +1,46 @@
 # Kastine Torch
 
-A lightweight Android flashlight app with an optional browser/PWA companion prototype.
+Kastine Torch is a lightweight native Android flashlight app. It controls the rear LED through Android's Camera2 torch API; it does not capture photos or video.
 
 ## Build the Android APK
 
-1. Open the repository's **Actions** tab.
-2. Select **Build Torch APK**.
-3. Choose **Run workflow** on the `main` branch, or use the build triggered by a workflow change.
-4. When the run succeeds, open its artifacts and download `KastineTorch-APK`.
+Requirements: JDK 17, Android SDK Platform 35, Android Build Tools 35.0.0, and Gradle 8.9.
 
-The workflow generates the Android Gradle project during CI and uploads a **debug APK**. It does not commit generated Gradle files back into the repository. A debug APK is for device testing, not a signed production release.
+```bash
+gradle --no-daemon testDebugUnitTest assembleDebug
+```
 
-## Current Android implementation
+APK output: `app/build/outputs/apk/debug/app-debug.apk`. See [docs/BUILDING.md](docs/BUILDING.md) for setup details.
 
-- Uses Android's Camera2 torch API; no image or video capture is required.
-- Requests camera permission only when the user tries to turn on the LED.
-- Provides a TalkBack-readable power-button label and politely announced status.
-- Uses a scrollable layout for short screens and applies Android 15 system-bar insets.
-- Stops SOS/strobe scheduling if torch activation fails.
-- Shows an explicit photosensitivity warning before strobe mode starts.
-- Targets Android API 35.
+## GitHub Actions
 
-## Browser/PWA companion prototype
+The **Build Torch APK** workflow runs manually or when Android source, Gradle configuration, workflow, README, or documentation changes on `main`. It runs JVM unit tests before assembling the debug APK. Download the `KastineTorch-APK` artifact from the successful workflow run.
 
-A lightweight browser edition is prepared separately as a downloadable package. It supports the rear LED only when the browser exposes the Web Media Capture torch capability; otherwise it falls back to a bright screen lamp. The browser edition is not part of the Android APK build.
+The artifact is for device testing, not a signed production release.
+
+## Android features
+
+- Large, TalkBack-labeled flashlight control.
+- Camera permission requested only when the user first attempts to use the LED.
+- Clear feedback when flash hardware is unavailable or Android denies access.
+- SOS mode with explicit Morse timing (short, long, and letter/word gaps).
+- Strobe mode behind a photosensitivity warning and explicit confirmation.
+- Battery indicator, scrollable short-screen layout, and Android 15 system-bar inset handling.
+- Adaptive launcher icon on Android 8.0+ and vector fallback on earlier supported versions.
+
+## Project structure
+
+- `app/src/main/java/` — Android application source.
+- `app/src/test/java/` — JVM tests for flash-pattern timing.
+- `app/src/main/res/` — theme, colors, and launcher icon resources.
+- `.github/workflows/build-torch-apk.yml` — reproducible CI build.
 
 ## Privacy
 
-The Android app uses CAMERA permission to control the phone's flash LED. It does not need to capture, store or upload photos or video. The browser companion requests camera access only after an explicit tap and does not record or upload media.
+The app uses Android's CAMERA permission because the CameraManager torch API is permission-gated. It does not capture, store, or upload photos or video. No account, analytics SDK, or network permission is required for the flashlight feature.
 
-## Device testing
+Follow [docs/ANDROID_TESTING.md](docs/ANDROID_TESTING.md) for physical-device and accessibility checks.
 
-Follow the [Android device and accessibility checklist](docs/ANDROID_TESTING.md). A successful CI build does not prove the flashlight works on every handset; test the APK on the actual target phone.
+## Release status
+
+Current CI output is a debug APK. A Play Store or public production release still requires protected signing configuration, release build validation, privacy disclosures, and target API review.
